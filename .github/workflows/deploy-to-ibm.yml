@@ -4,11 +4,8 @@ on:
   push:
     branches:
     - master
-    paths:
-      - "manifest-ibm.yml"
-      - ".github/workflows/deploy-to-ibm.yml"
   schedule:
-    - cron: "0 20 * * 3"
+    - cron: "0 01 * * 3"
 
 jobs:
   deploy:
@@ -18,19 +15,56 @@ jobs:
     
     - run: |
         wget -q https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-linux-64.zip
-        unzip v2ray-linux-64.zip
-        rm -rf v2ray-linux-64.zip doc system* vpoint*
+        unzip -o v2ray-linux-64.zip "v2ray" "v2ctl" "geosite.dat" "geoip.dat" 
+        rm -rf v2ray-linux-64.zip
         chmod 700 v2ray v2ctl
+        cat > config.json << EOF
+        {
+          "inbounds": [
+            {
+              "port": 8080,
+              "protocol": "vmess",
+              "settings": {
+                "clients": [
+                  {
+                    "id": "${{ secrets.CF_UUID_IBM }}",
+                    "alterId": 4
+                  }
+                ]
+              },
+              "streamSettings": {
+                "network":"ws"
+              }
+            }
+          ],
+          "outbounds": [
+            {
+              "protocol": "freedom",
+              "settings": {}
+            }
+          ]
+        }
+        EOF
         
+        cat > manifest-ibm.yml << EOF
+        ---
+        applications:
+        - name: zzhhzt
+          memory: 256M
+          disk_quota: 256M
+          random-route: true
+          command: ./v2ray
+          buildpacks:
+          - binary_buildpack
+        EOF
+    
     - uses: citizen-of-planet-earth/cf-cli-action@v1
       with:
         cf_api: https://api.us-south.cf.cloud.ibm.com
         cf_username: ${{ secrets.CF_USER_IBM }}
         cf_password: ${{ secrets.CF_PASSWORD_IBM }}
-        cf_org: AwesomeApp
-        cf_space: Development
+        cf_org: ${{ secrets.CF_ORG_IBM }}
+        cf_space: ${{ secrets.CF_SPACE_IBM }}
         command: >
-          push -f manifest-ibm.yml --no-start > /dev/null 2>&1 && 
-          cf set-env v2ws CONFIG_URL ${{ secrets.CF_CONFIG_URL_IBM }} && 
-          cf start v2ws > /dev/null 2>&1
-        
+          push zzhhzt -f manifest-ibm.yml
+          
